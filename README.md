@@ -1,13 +1,12 @@
 # SOA-Progetto
 ## Indice
 
-1. [ProjectSpecification](#ProjectSpecification)
+- [Project Specification](#project-specification)
+- [Getting Started](#getting-started)
 
-1. [GettingStarted](#GettingStarted)
-
-   1. [Installation](#Installation)
-   1. [Main features](#MainFeatures)
-   1. [Testing](#Testing)
+  - [Installation](#Installation)
+  - [Main features](#main-features)
+  - [Testing](#Testing)
    
 # Project Specification
 
