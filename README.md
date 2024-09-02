@@ -1,9 +1,9 @@
 # SOA-Progetto
 ## Indice
 
-1. [Project Specification](#Project Specification)
+1. [ProjectSpecification](#ProjectSpecification)
 
-1. [Getting Started](#Getting Started)
+1. [GettingStarted](#GettingStarted)
 
    1. [Installation](#Installation)
    1. [Main features](#MainFeatures)
