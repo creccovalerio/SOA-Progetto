@@ -149,5 +149,5 @@ module_init(singlefilefs_init);
 module_exit(singlefilefs_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Valerio Crecco");
+MODULE_AUTHOR("Francesco Quaglia <francesco.quaglia@uniroma2.it>");
 MODULE_DESCRIPTION("SINGLE-FILE-FS");

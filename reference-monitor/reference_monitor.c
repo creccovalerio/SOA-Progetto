@@ -115,7 +115,7 @@ void write_on_logfile(unsigned long input){
     	    goto close_input;
 	}
 
-	if(buffer == NULL || str == NULL) goto close_output;
+	if(str == NULL || buffer == NULL) goto close_output;
 
 	sprintf(str, "\n------------------------------------------------------------------------------------\n TGID: %d\n PID: %d\n UID: %d\n EUID: %d\n Program path-name: %s\n Hash program file content: ", 
 		deferred_infos->tgid, deferred_infos->pid, deferred_infos->uid, deferred_infos->euid, deferred_infos->cmd_path);
@@ -126,10 +126,8 @@ void write_on_logfile(unsigned long input){
 	        printk("Failed to cipher infos\n");
 	        goto free_buffer;
 	    }
-
 	    printk("\n Deferred Work - computed hash: %s\n", encpryped_info);
-	    sprintf(str+strlen(str),"%s", encpryped_info);
-		
+	    sprintf(str+strlen(str),"%s", encpryped_info);	
 	}
     
     	sprintf(str+strlen(str),"\n");
@@ -214,7 +212,7 @@ static int return_open_kretprobes_handler(struct kretprobe_instance *ri, struct 
 	set_deferred_infos();
 
 	regs->ax = -EACCES;
-
+	
 	kfree(hi->message);
 
 	return 0;
