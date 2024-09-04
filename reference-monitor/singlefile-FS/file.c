@@ -25,7 +25,6 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     struct inode * the_inode = filp->f_inode;
     file_size = the_inode->i_size;
     
-
     printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld)",MOD_NAME, len, *off, file_size);
 
     mutex_lock(&mutex);

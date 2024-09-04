@@ -152,7 +152,7 @@ close_input:
 	
 }
 
-static int set_deferred_infos(void){
+static void set_deferred_infos(void){
 
 	packed_work *the_task;
 	char *exe_path;
@@ -160,7 +160,7 @@ static int set_deferred_infos(void){
 	the_task = kzalloc(sizeof(packed_work),GFP_KERNEL);
 	if(the_task == NULL){
 	    printk("%s: kzalloc error\n", MODNAME);
-	    return 0;
+	    return;
 	}
 
 	the_task->tgid = current->tgid;
@@ -174,8 +174,6 @@ static int set_deferred_infos(void){
 	__INIT_WORK(&(the_task->the_work),(void*)write_on_logfile, (unsigned long)(&(the_task->the_work)));
 
 	schedule_work(&the_task->the_work);
-
-	return 1;
 
 }
 
@@ -206,12 +204,33 @@ static int check_into_blacklist(int open_op, char *path){
 	return 0;
 }
 
-static int open_file_wrapper(struct kprobe *ri, struct pt_regs *regs){
+static int return_open_kretprobes_handler(struct kretprobe_instance *ri, struct pt_regs *regs){
+	
+	struct handler_infos *hi;
+
+	hi = (struct handler_infos *)ri->data;
+	pr_info("%s: %s", MODNAME, hi->message);
+
+	set_deferred_infos();
+
+	regs->ax = -EACCES;
+
+	kfree(hi->message);
+
+	return 0;
+		
+}
+
+
+static int entry_open_file_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
 		
 	char *path;
 	char *dir;
 	char *prev_dir;
 	int cp_op = 0;
+
+	struct handler_infos *hi;
+	char msg[512];
 	
 	const __user char *pathname = ((struct filename *)(regs->si))->uptr; //arg1
 	const struct open_flags *op_flag = (struct open_flags *)(regs->dx); //arg2
@@ -223,11 +242,11 @@ static int open_file_wrapper(struct kprobe *ri, struct pt_regs *regs){
 	char run_dir[5]; 
 	strncpy(run_dir, real_path, 4);
 	run_dir[4]='\0';
-	if(strcmp(run_dir, "/run") == 0) return 0;
+	if(strcmp(run_dir, "/run") == 0) return 1;
 
 	//checking if file is open in write mode
 	if(!(flags & O_WRONLY) && !(flags & O_RDWR) && !(flags & (O_CREAT | __O_TMPFILE | O_EXCL))){
-	    if(strcmp(current->comm, "cp\0") != 0) return 0;
+	    if(strcmp(current->comm, "cp\0") != 0) return 1;
 	    printk("%s:cp operation in read mode intercepted\n", MODNAME);
 	    cp_op = 1;  
 	}
@@ -236,19 +255,18 @@ static int open_file_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
 	if(pathname == NULL){
 	    // se real_path è assoluto -> pathname è NULL
-	    if(real_path == NULL) return 0;
+	    if(real_path == NULL) return 1;
 	    path = (char *)real_path;
 	}else{
             path = get_abs_path(pathname);	
             if(path == NULL){
             	if(cp_op != 1){
-            	    return 0;
+            	    return 1;
             	}else{
 	            path = (char *)real_path;
 	        }
             }
 
-            
 	}
 
 	/* check if path is empty */
@@ -262,31 +280,43 @@ static int open_file_wrapper(struct kprobe *ri, struct pt_regs *regs){
 	printk("%s: open in write mode intercepted: file (with flags %d) is %s - prev_dir is %s, cmd is %s\n",MODNAME, flags, path, dir, current->comm);
 
     	if(check_into_blacklist(1, path)){
-    	    printk("%s: File %s cannot be opened. Open rejected.\n",MODNAME, path);
-    	    if(set_deferred_infos()){
-    	    	regs->di = -1;
-	        regs->si = (unsigned long)NULL;
-    	    }
+    	    hi = (struct handler_infos *)ri->data;
+    	    sprintf(msg, "File %s cannot be opened in write mode. Open rejected!", path);
+    	    hi->message = kstrdup(msg, GFP_ATOMIC);
+
+    	    return 0;
         }
 
         if(check_into_blacklist(1, dir)){
-            printk("%s: File/Directory %s cannot be copied. Copy rejected.\n",MODNAME, dir);
-    	    if(set_deferred_infos()){
+            hi = (struct handler_infos *)ri->data;
+    	    sprintf(msg, "File/Directory %s cannot be copied. Copy rejected!", dir);
+    	    hi->message = kstrdup(msg, GFP_ATOMIC);
+
+    	    if(cp_op){
+    	    	printk("%s: File/Directory %s cannot be copied. Copy rejected!", MODNAME, dir);
+    	    
+    	    	set_deferred_infos();
+
     	    	regs->di = -1;
 	        regs->si = (unsigned long)NULL;
+
+	        return 1;
     	    }
+
+    	    return 0;
         }
 
-	return 0;
-	
+	return 1;	
 }
 
-static struct kprobe kp_open_file = {
-        .symbol_name = "do_filp_open",
-        .pre_handler = open_file_wrapper,
+static struct kretprobe kp_open_file = {
+        .kp.symbol_name = "do_filp_open",
+        .handler = return_open_kretprobes_handler,
+        .entry_handler = entry_open_file_wrapper,
+        .data_size = sizeof(struct handler_infos),
 };
 
-static int delete_file_wrapper(struct kprobe *ri, struct pt_regs *regs){
+static int entry_delete_file_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
 	
 	char *path;
 	
@@ -304,22 +334,24 @@ static int delete_file_wrapper(struct kprobe *ri, struct pt_regs *regs){
 	printk("%s: rm intercepted: file to delete is %s\n",MODNAME, path);
 	
 	if(check_into_blacklist(0, path) == 1){
-	    printk("%s: File %s cannot be deleted. Delete rejected.\n",MODNAME, path);
-	    if(set_deferred_infos()){
-	        regs->si = (unsigned long)NULL;
-	    }
+    	    printk("%s: File %s cannot be deleted. Delete rejected", MODNAME, path);
+    	    set_deferred_infos();
+    	    regs->si = (unsigned long)NULL;
+
+    	    return 0;
 	}
 	
-	return 0;
+	return 1;
 
 }
 
-static struct kprobe kp_delete_file = {
-        .symbol_name =  "do_unlinkat",
-        .pre_handler = delete_file_wrapper,
+static struct kretprobe kp_delete_file = {
+        .kp.symbol_name = "do_unlinkat",
+        .entry_handler = entry_delete_file_wrapper,
+        .data_size = sizeof(struct handler_infos),
 };
 
-static int create_dir_wrapper(struct kprobe *ri, struct pt_regs *regs){
+static int entry_create_dir_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
 	
 	char *path;
 	char *dir;
@@ -343,22 +375,25 @@ static int create_dir_wrapper(struct kprobe *ri, struct pt_regs *regs){
 	printk("%s: mkdir intercepted: directory to create is %s, prev dir is %s\n",MODNAME, path, dir);
 
 	if(check_into_blacklist(0, dir)){
-	    printk("%s: Directory %s cannot be created. Mkdir rejected.\n",MODNAME, dir);
-	    if(set_deferred_infos()){
-	        regs->si = (unsigned long)NULL;
-	    }
+	    printk("%s: Directory %s cannot be created. Mkdir rejected!", MODNAME, dir);
+    	    set_deferred_infos();
+    	    regs->si = (unsigned long)NULL;
+
+    	    return 0;
 	}
 		
-	return 0;
+	return 1;
 
 }
 
-static struct kprobe kp_create_dir = {
-        .symbol_name =  "do_mkdirat",
-        .pre_handler = create_dir_wrapper,
+static struct kretprobe kp_create_dir = {
+        .kp.symbol_name = "do_mkdirat",
+        .entry_handler = entry_create_dir_wrapper,
+        .data_size = sizeof(struct handler_infos),
+
 };
 
-static int remove_dir_wrapper(struct kprobe *ri, struct pt_regs *regs){
+static int entry_remove_dir_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
 	
 	char *path;
 	
@@ -376,22 +411,24 @@ static int remove_dir_wrapper(struct kprobe *ri, struct pt_regs *regs){
 	printk("%s: rmdir intercepted: directory to remove is %s\n",MODNAME, path);
 
 	if(check_into_blacklist(0, path) == 1){
-	    printk("%s: Directory %s cannot be removed. Rmdir rejected.\n",MODNAME, path);
-	    if(set_deferred_infos()){
-	        regs->si = (unsigned long)NULL;
-	    }
+	    printk("%s: Directory %s cannot be removed. Rmdir rejected!", MODNAME, path);
+    	    set_deferred_infos();
+    	    regs->si = (unsigned long)NULL;
+
+    	    return 0;
 	}
 	
-	return 0;
+	return 1;
 
 }
 
-static struct kprobe kp_remove_dir = {
-        .symbol_name =  "do_rmdir",
-        .pre_handler = remove_dir_wrapper,
+static struct kretprobe kp_remove_dir = {
+        .kp.symbol_name = "do_rmdir",
+        .entry_handler = entry_remove_dir_wrapper,
+        .data_size = sizeof(struct handler_infos),
 };
 
-static int move_wrapper(struct kprobe *ri, struct pt_regs *regs){
+static int entry_move_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
 	
 	char *source_path;
 	char *dest_path;
@@ -419,26 +456,29 @@ static int move_wrapper(struct kprobe *ri, struct pt_regs *regs){
 	printk("%s: mv operation intercepted with directory %s as source and directory %s as destination\n",MODNAME, source_path, dest_path);
 	
 	if(check_into_blacklist(0, dest_path) == 1){
-		printk("%s: File/Directory %s cannot be moved. Move rejected.\n",MODNAME, dest_path);
-		if(set_deferred_infos()){
-	    	    regs->si = (unsigned long)NULL;
-	    	}
+	    printk("%s: File/Directory %s cannot be moved. Move rejected!", MODNAME, dest_path);
+    	    set_deferred_infos();
+    	    regs->si = (unsigned long)NULL;
+
+    	    return 0;
 	}
 
 	if(check_into_blacklist(0, source_path) == 1){
-		printk("%s: File/Directory %s cannot be moved. Move rejected.\n",MODNAME, source_path);
-		if(set_deferred_infos()){
-	    	    regs->si = (unsigned long)NULL;
-	    	}
+	    printk("%s: File/Directory %s cannot be moved. Move rejected!", MODNAME, source_path);
+    	    set_deferred_infos();
+    	    regs->si = (unsigned long)NULL;
+
+    	    return 0;
 	}	
 	
-	return 0;
+	return 1;
 
 }
 
-static struct kprobe kp_move = {
-        .symbol_name =  "do_renameat2",
-        .pre_handler = move_wrapper,
+static struct kretprobe kp_move = {
+        .kp.symbol_name = "do_renameat2",
+        .entry_handler = entry_move_wrapper,
+        .data_size = sizeof(struct handler_infos),
 };
 
 
@@ -489,11 +529,11 @@ asmlinkage long sys_set_status_on(char *password){
 
 	/* if the current status of the reference monitor is OFF or REC-OFF -> enabling the probes*/
 	if(ref_monitor.status == OFF || ref_monitor.status == RECOFF){
-	    enable_kprobe(&kp_open_file);
-	    enable_kprobe(&kp_create_dir);
-	    enable_kprobe(&kp_remove_dir);
-	    enable_kprobe(&kp_delete_file);
-	    enable_kprobe(&kp_move);
+	    enable_kretprobe(&kp_open_file);
+	    enable_kretprobe(&kp_create_dir);
+	    enable_kretprobe(&kp_remove_dir);
+	    enable_kretprobe(&kp_delete_file);
+	    enable_kretprobe(&kp_move);
 	}
 	
 	/* set the reference monitor status to ON */
@@ -555,11 +595,11 @@ asmlinkage long sys_set_status_off(char *password){
 
 	/* if the current status of the reference monitor is ON or REC-ON -> disabling the probes*/
 	if(ref_monitor.status == ON || ref_monitor.status == RECON){
-	    disable_kprobe(&kp_open_file);
-	    disable_kprobe(&kp_create_dir);
-	    disable_kprobe(&kp_remove_dir);
-	    disable_kprobe(&kp_delete_file);
-	    disable_kprobe(&kp_move);
+	    disable_kretprobe(&kp_open_file);
+	    disable_kretprobe(&kp_create_dir);
+	    disable_kretprobe(&kp_remove_dir);
+	    disable_kretprobe(&kp_delete_file);
+	    disable_kretprobe(&kp_move);
 	}
 	
 	/* set the reference monitor status to OFF */
@@ -621,11 +661,11 @@ asmlinkage long sys_set_status_rec_on(char *password){
 	
 	/* if the current status of the reference monitor is OFF or REC-OFF -> enabling the probes*/
 	if(ref_monitor.status == OFF || ref_monitor.status == RECOFF){
-	    enable_kprobe(&kp_open_file);
-	    enable_kprobe(&kp_create_dir);
-	    enable_kprobe(&kp_remove_dir);
-	    enable_kprobe(&kp_delete_file);
-	    enable_kprobe(&kp_move);
+	    enable_kretprobe(&kp_open_file);
+	    enable_kretprobe(&kp_create_dir);
+	    enable_kretprobe(&kp_remove_dir);
+	    enable_kretprobe(&kp_delete_file);
+	    enable_kretprobe(&kp_move);
 	}
 
 	/* set the reference monitor status to REC-ON */
@@ -687,11 +727,11 @@ asmlinkage long sys_set_status_rec_off(char *password){
 	
 	/* if the current status of the reference monitor is ON or REC-ON -> disabling the probes*/
 	if(ref_monitor.status == ON || ref_monitor.status == RECON){
-	    disable_kprobe(&kp_open_file);
-	    disable_kprobe(&kp_create_dir);
-	    disable_kprobe(&kp_remove_dir);
-	    disable_kprobe(&kp_delete_file);
-	    disable_kprobe(&kp_move);
+	    disable_kretprobe(&kp_open_file);
+	    disable_kretprobe(&kp_create_dir);
+	    disable_kretprobe(&kp_remove_dir);
+	    disable_kretprobe(&kp_delete_file);
+	    disable_kretprobe(&kp_move);
 	}
 	
 	/* set the reference monitor status to REC-OFF */
@@ -1130,31 +1170,31 @@ int init_module(void) {
 	syscall5 = restore[5];
 	syscall6 = restore[6];
 
-	ret = register_kprobe(&kp_open_file);
+	ret = register_kretprobe(&kp_open_file);
 	if (ret < 0) {
 	    printk("%s: kprobe kp_open_file registering failed, returned %d\n",MODNAME,ret);
 	    return ret;
 	}
 
-	ret = register_kprobe(&kp_delete_file);
+	ret = register_kretprobe(&kp_delete_file);
 	if (ret < 0) {
 	    printk("%s: kprobe kp_delete_file registering failed, returned %d\n",MODNAME,ret);
 	    return ret;
 	}
 
-	ret = register_kprobe(&kp_create_dir);
+	ret = register_kretprobe(&kp_create_dir);
 	if (ret < 0) {
 	    printk("%s: kprobe kp_create_dir registering failed, returned %d\n",MODNAME,ret);
 	    return ret;
 	}
 
-	ret = register_kprobe(&kp_remove_dir);
+	ret = register_kretprobe(&kp_remove_dir);
 	if (ret < 0) {
 	    printk("%s: kprobe kp_remove_dir registering failed, returned %d\n",MODNAME,ret);
 	    return ret;
 	}
 
-	ret = register_kprobe(&kp_move);
+	ret = register_kretprobe(&kp_move);
 	if (ret < 0) {
 	    printk("%s: kprobe kp_move registering failed, returned %d\n",MODNAME,ret);
 	    return ret;
@@ -1176,11 +1216,11 @@ void cleanup_module(void) {
 	printk("%s: sys-call table restored to its original content\n",MODNAME);
 	    
 	//unregistering kprobes
-	unregister_kprobe(&kp_open_file);
-	unregister_kprobe(&kp_delete_file);
-	unregister_kprobe(&kp_create_dir);
-	unregister_kprobe(&kp_remove_dir);
-	unregister_kprobe(&kp_move);
+	unregister_kretprobe(&kp_open_file);
+	unregister_kretprobe(&kp_delete_file);
+	unregister_kretprobe(&kp_create_dir);
+	unregister_kretprobe(&kp_remove_dir);
+	unregister_kretprobe(&kp_move);
 	   
 	printk("%s: kprobes unregistered\n", MODNAME);
 	printk("%s: Module correctly removed\n", MODNAME);

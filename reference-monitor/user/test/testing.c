@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <limits.h>
+#include <errno.h>
 #include "../lib/include/utils.h"
 
 #define flush(stdin) while(getchar() != '\n')
@@ -61,13 +62,20 @@ reinsert_open:
 
 				fd = open(file_path, O_WRONLY);
 				if(fd == -1){
+					if(errno == EACCES){
+						perror("open");
+						fflush(stdout);
+						flush(stdin);
+						free(file_path);
+						break;
+					}
 					printf("\nError while opening the file...");
 					fflush(stdout);
 					flush(stdin);
 					free(file_path);
 					goto reinsert_open;
 				}
-
+			
 				printf("\nFile successfully OPENED!");
 				fflush(stdout);
 				flush(stdin);
