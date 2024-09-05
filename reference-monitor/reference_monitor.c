@@ -99,7 +99,7 @@ void write_on_logfile(unsigned long data)
 
         packed_work *deferred_infos = (void*)container_of((void*)data,packed_work,the_work);
         
-        hash = genereate_hash((const char *)deferred_infos->cmd_path);
+        hash = generate_hash((const char *)deferred_infos->cmd_path);
         
         /* string to be written to the log */
         snprintf(log_line, 256, "TGID: %d, PID: %d, UID: %u, EUID: %u, CMD PATH: %s, HASH: %s\n", deferred_infos->tgid, deferred_infos->pid,
