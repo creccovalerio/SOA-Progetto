@@ -89,68 +89,38 @@ module_param(syscall5, int, 0660);
 module_param(syscall6, int, 0660);
 
 
-void write_on_logfile(unsigned long input){
+void write_on_logfile(unsigned long data)
+{
 
-	packed_work *deferred_infos = (void*)container_of((void*)input,packed_work,the_work);
-	struct file *out_file = NULL;
-	struct file *in_file = NULL;
-	ssize_t n_bytes;
-	char *str = kzalloc(4096, GFP_KERNEL);
-	char *buffer = kmalloc(BUFFER_SIZE, GFP_KERNEL);
-	char *encpryped_info;
-	unsigned char enc[ENC_SIZE];
+        char *hash;
+        char log_line[256];
+        struct file *file;
+        ssize_t ret;
 
-	if(deferred_infos->cmd_path == NULL)  return;
-	
-	in_file = filp_open(deferred_infos->cmd_path, O_RDONLY , 0);
-	printk("%s: Opened file %s\n", MODNAME, deferred_infos->cmd_path);
-	if (IS_ERR(in_file)) {
-	    printk("%s Deferred Work: Impossible to open the executable file\n", MODNAME);
-    	    return;
-	}
+        packed_work *deferred_infos = (void*)container_of((void*)data,packed_work,the_work);
+        
+        hash = genereate_hash((const char *)deferred_infos->cmd_path);
+        
+        /* string to be written to the log */
+        snprintf(log_line, 256, "TGID: %d, PID: %d, UID: %u, EUID: %u, CMD PATH: %s, HASH: %s\n", deferred_infos->tgid, deferred_infos->pid,
+                 deferred_infos->uid, deferred_infos->euid, deferred_infos->cmd_path, hash);
 
-	out_file = filp_open(the_file, O_WRONLY, 0);
-	if (IS_ERR(out_file)) {
-	    printk("%s Deferred Work: Impossible to open Log-file\n", MODNAME);
-    	    goto close_input;
-	}
 
-	if(str == NULL || buffer == NULL) goto close_output;
+        file = filp_open(the_file, O_WRONLY, 0644);
+        if (IS_ERR(file))
+        {
+                pr_err("Error in opening log file (maybe the VFS is not mounted): %ld\n", PTR_ERR(file));
+                return;
+        }
 
-	sprintf(str, "\n------------------------------------------------------------------------------------\n TGID: %d\n PID: %d\n UID: %d\n EUID: %d\n Program path-name: %s\n Hash program file content: ", 
-		deferred_infos->tgid, deferred_infos->pid, deferred_infos->uid, deferred_infos->euid, deferred_infos->cmd_path);
-	
-	while ((n_bytes = kernel_read(in_file, buffer, BUFFER_SIZE, &in_file->f_pos)) > 0) {
-	    encpryped_info = cipher_file_content(buffer, n_bytes, enc);
-	    if (encpryped_info == NULL) {
-	        printk("Failed to cipher infos\n");
-	        goto free_buffer;
-	    }
-	    printk("\n Deferred Work - computed hash: %s\n", encpryped_info);
-	    sprintf(str+strlen(str),"%s", encpryped_info);	
-	}
-    
-    	sprintf(str+strlen(str),"\n");
-	
-	kernel_write(out_file, str, strlen(str), &out_file->f_pos);
-	
-	printk("%s Deferred Work: File written\n", MODNAME);
+        ret = kernel_write(file, log_line, strlen(log_line), &file->f_pos);
 
-free_buffer: 
-	kfree(buffer);
-	kfree(str);
+        filp_close(file, NULL);
 
-close_output:
-	filp_close(out_file, NULL);
-
-close_input:
-	filp_close(in_file, NULL);
-
-	return;
-	
+        kfree((void *)container_of((void *)data, packed_work, the_work));
 }
 
-static void set_deferred_infos(void){
+static int set_deferred_infos(void){
 
 	packed_work *the_task;
 	char *exe_path;
@@ -158,7 +128,7 @@ static void set_deferred_infos(void){
 	the_task = kzalloc(sizeof(packed_work),GFP_KERNEL);
 	if(the_task == NULL){
 	    printk("%s: kzalloc error\n", MODNAME);
-	    return;
+	    return -1;
 	}
 
 	the_task->tgid = current->tgid;
@@ -172,6 +142,8 @@ static void set_deferred_infos(void){
 	__INIT_WORK(&(the_task->the_work),(void*)write_on_logfile, (unsigned long)(&(the_task->the_work)));
 
 	schedule_work(&the_task->the_work);
+
+	return 0;
 
 }
 
@@ -281,6 +253,8 @@ static int entry_open_file_wrapper(struct kretprobe_instance *ri, struct pt_regs
     	    hi = (struct handler_infos *)ri->data;
     	    sprintf(msg, "File %s cannot be opened in write mode. Open rejected!", path);
     	    hi->message = kstrdup(msg, GFP_ATOMIC);
+
+    	    printk("TERMINATED ENTRY HANDLER\n");
 
     	    return 0;
         }

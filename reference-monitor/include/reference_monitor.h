@@ -35,6 +35,7 @@ struct handler_infos{
 	char *message;
 };
 
+
 /* Deferred work struct informations */
 typedef struct _packed_work{
         pid_t tgid;

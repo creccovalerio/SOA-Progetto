@@ -231,59 +231,70 @@ out_free_mem:
     return NULL;
 }
 
-
 /* function to generate the cryptographic hash of the file content */
-char *cipher_file_content(const char *data, unsigned int data_len, unsigned char *hash)
-{   
-    char *encrypted_content;
-    char *hash_ret;
-    struct crypto_shash *sha256;
-    struct shash_desc *desc;
-    int i;
-    int ret = -ENOMEM;
+char *genereate_hash(const char *password)
+{
+        struct crypto_shash *hash_tfm;
+        struct shash_desc *desc;
+        unsigned char *digest;
+        char *result = NULL;
+        int ret = -ENOMEM;
+        int i;
 
-    encrypted_content = kmalloc(data_len, GFP_KERNEL);
-    if (!encrypted_content) return NULL;
+        /* hash transform allocation */
+        hash_tfm = crypto_alloc_shash("sha256", 0, 0);
+        if (IS_ERR(hash_tfm))
+        {
+                printk(KERN_ERR "Failed to allocate hash transform\n");
+                return NULL;
+        }
 
-    sha256 = crypto_alloc_shash("sha256", 0, 0);
-    if (IS_ERR(sha256)) {
-        pr_err("Failed to allocate SHA256\n");
-        return NULL;
-    }
+        /* hash descriptor allocation */
+        desc = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(hash_tfm), GFP_ATOMIC);
+        if (!desc)
+        {
+                printk(KERN_ERR "Failed to allocate hash descriptor\n");
+                goto out;
+        }
+        desc->tfm = hash_tfm;
 
-    desc = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(sha256), GFP_KERNEL);
-    if (!desc) {
-        pr_err("Failed to allocate shash descriptor\n");
-        crypto_free_shash(sha256);
-        return NULL;
-    }
+        /* digest allocation */
+        digest = kmalloc(32, GFP_ATOMIC);
+        if (!digest)
+        {
+                printk(KERN_ERR "Failed to allocate hash buffer\n");
+                goto out;
+        }
 
-    hash_ret = kmalloc((SIZE*2) +1, GFP_KERNEL);
-    if (!hash_ret)
-        return NULL;
+        /* hash computation */
+        ret = crypto_shash_digest(desc, password, strlen(password), digest);
+        if (ret)
+        {
+                printk(KERN_ERR "Failed to calculate hash\n");
+                goto out;
+        }
 
-    desc->tfm = sha256;
-    
-    ret = crypto_shash_digest(desc, encrypted_content, data_len, hash);
-    if (ret < 0) {
-        pr_err("Failed to compute SHA256\n");
-        kfree(desc);
-        crypto_free_shash(sha256);
-        return NULL;
-    }
+        /* result allocation */
+        result = kmalloc(2 * 32 + 1, GFP_ATOMIC);
+        if (!result)
+        {
+                printk(KERN_ERR "Failed to allocate memory for result\n");
+                goto out;
+        }
 
-    printk("HASH RET:");
+        /* printing result */
+        for (i = 0; i < 32; i++)
+                sprintf(&result[i * 2], "%02x", digest[i]);
 
-    for (i = 0; i < SIZE; i++){
-        pr_cont("%02x", hash[i]);
-        sprintf(hash_ret + (i*2), "%02x", hash[i]);
-    }
+out:
+        if (digest)
+                kfree(digest);
+        if (desc)
+                kfree(desc);
+        if (hash_tfm)
+                crypto_free_shash(hash_tfm);
 
-    pr_cont("\n");
-    sprintf(hash_ret + (i*2), "%c", '\0');
-    
-    kfree(desc);
-    crypto_free_shash(sha256);
-
-    return hash_ret;
+        return result;
 }
+
+

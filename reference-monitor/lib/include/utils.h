@@ -7,6 +7,7 @@ char *retrieve_dir(char *path);
 char *retrieve_exe_path(struct path path_struct);
 char *retrieve_pwd(void);
 char *cipher_password(char *password, char *salt);
-char* cipher_file_content(const char *data, unsigned int data_len, unsigned char *hash);
+char *generate_hash(const unsigned char *data);
+
 
 #endif
