@@ -232,7 +232,7 @@ out_free_mem:
 }
 
 /* function to generate the cryptographic hash of the file content */
-char *genereate_hash(const char *password)
+char *generate_hash(const char *password)
 {
         struct crypto_shash *hash_tfm;
         struct shash_desc *desc;
