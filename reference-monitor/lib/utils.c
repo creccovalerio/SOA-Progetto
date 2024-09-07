@@ -207,14 +207,12 @@ char *cipher_password(char *password, char *salt){
     
     // Libera la memoria e rilascia il transform context
     kfree(desc);
-    //kfree(encrypted_password);
     crypto_free_shash(tfm);
     
     // Stampa l'hash della password
     pr_info("Encrypted Password: ");
     for (i = 0; i < SIZE; i++){
         pr_cont("%02x", digest[i]);
-        //memcpy(&cipher[i], &digest[i], sizeof(unsigned char));
         sprintf(cipher + (i*2), "%02x", digest[i]);
     }
 
