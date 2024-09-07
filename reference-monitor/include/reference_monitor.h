@@ -38,7 +38,7 @@ struct handler_infos{
 /* Deferred work struct informations */
 typedef struct _packed_work{
         pid_t tgid;
-        pid_t pid;
+        pid_t tid;
         uid_t uid;
         uid_t euid;
         char cmd_path[128];
