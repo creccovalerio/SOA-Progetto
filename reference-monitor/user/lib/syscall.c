@@ -61,7 +61,3 @@ long remove_path(char *path, char *password){
 long change_password(char *new_password, char *old_password){
 	return syscall(retrieve_syscall_no("cat \"/sys/module/the_reference_monitor/parameters/syscall6\""), new_password, old_password);
 }
-
-long retrieve_blacklist(char *password){
-    return syscall(retrieve_syscall_no("cat \"/sys/module/the_reference_monitor/parameters/syscall7\""), password);
-}
