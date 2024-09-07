@@ -102,15 +102,14 @@ void write_on_logfile(unsigned long data)
         hash = generate_hash((const char *)deferred_infos->cmd_path);
         
         /* string to be written to the log */
-        snprintf(log_line, 256, "TGID: %d, PID: %d, UID: %u, EUID: %u, CMD PATH: %s, HASH: %s\n", deferred_infos->tgid, deferred_infos->pid,
-                 deferred_infos->uid, deferred_infos->euid, deferred_infos->cmd_path, hash);
+        snprintf(log_line, 256, "TGID: %d, PID: %d, UID: %u, EUID: %u, CMD PATH: %s, HASH: %s\n", 
+		deferred_infos->tgid, deferred_infos->pid, deferred_infos->uid, deferred_infos->euid, deferred_infos->cmd_path, hash);
 
 
         file = filp_open(the_file, O_WRONLY, 0644);
-        if (IS_ERR(file))
-        {
-                pr_err("Error in opening log file (maybe the VFS is not mounted): %ld\n", PTR_ERR(file));
-                return;
+        if (IS_ERR(file)){
+            pr_err("Error in opening log file (maybe the VFS is not mounted): %ld\n", PTR_ERR(file));
+            return;
         }
 
         ret = kernel_write(file, log_line, strlen(log_line), &file->f_pos);
@@ -178,9 +177,9 @@ static int return_open_kretprobes_handler(struct kretprobe_instance *ri, struct 
 
 	hi = (struct handler_infos *)ri->data;
 	pr_info("%s: %s", MODNAME, hi->message);
-
+	
 	set_deferred_infos();
-
+	
 	regs->ax = -EACCES;
 	
 	kfree(hi->message);
