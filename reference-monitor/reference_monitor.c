@@ -120,7 +120,7 @@ void write_on_logfile(unsigned long data)
         kfree((void *)container_of((void *)data, packed_work, the_work));
 }
 
-static int set_deferred_infos(void){
+static void set_deferred_infos(void){
 
 	packed_work *the_task;
 	char *exe_path;
@@ -128,7 +128,7 @@ static int set_deferred_infos(void){
 	the_task = kzalloc(sizeof(packed_work),GFP_KERNEL);
 	if(the_task == NULL){
 	    printk("%s: kzalloc error\n", MODNAME);
-	    return -1;
+	    return;
 	}
 
 	the_task->tgid = current->tgid;
@@ -142,8 +142,6 @@ static int set_deferred_infos(void){
 	__INIT_WORK(&(the_task->the_work),(void*)write_on_logfile, (unsigned long)(&(the_task->the_work)));
 
 	schedule_work(&the_task->the_work);
-
-	return 0;
 
 }
 
