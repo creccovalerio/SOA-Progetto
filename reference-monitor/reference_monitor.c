@@ -102,8 +102,8 @@ void write_on_logfile(unsigned long data)
         hash = generate_hash((const char *)deferred_infos->cmd_path);
         
         /* string to be written to the log */
-        snprintf(log_line, 256, "TGID: %d, PID: %d, UID: %u, EUID: %u, CMD PATH: %s, HASH: %s\n", 
-		deferred_infos->tgid, deferred_infos->pid, deferred_infos->uid, deferred_infos->euid, deferred_infos->cmd_path, hash);
+        snprintf(log_line, 256, "TGID: %d, TID: %d, UID: %u, EUID: %u, CMD PATH: %s, HASH: %s\n", 
+		deferred_infos->tgid, deferred_infos->tid, deferred_infos->uid, deferred_infos->euid, deferred_infos->cmd_path, hash);
 
 
         file = filp_open(the_file, O_WRONLY, 0644);
@@ -131,7 +131,7 @@ static void set_deferred_infos(void){
 	}
 
 	the_task->tgid = current->tgid;
-	the_task->pid = current->pid;
+	the_task->tid = current->pid;
 	the_task->uid = current->cred->uid.val;
 	the_task->euid = current->cred->euid.val;
 	exe_path = retrieve_exe_path(current->mm->exe_file->f_path);
