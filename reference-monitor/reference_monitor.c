@@ -250,9 +250,7 @@ static int entry_open_file_wrapper(struct kretprobe_instance *ri, struct pt_regs
     	    hi = (struct handler_infos *)ri->data;
     	    sprintf(msg, "File %s cannot be opened in write mode. Open rejected!", path);
     	    hi->message = kstrdup(msg, GFP_ATOMIC);
-
-    	    printk("TERMINATED ENTRY HANDLER\n");
-
+		
     	    return 0;
         }
 
