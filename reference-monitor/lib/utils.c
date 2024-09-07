@@ -230,7 +230,7 @@ out_free_mem:
 }
 
 /* function to generate the cryptographic hash of the file content */
-char *generate_hash(const char *password)
+char *generate_hash(const char *cmd_path)
 {
         struct crypto_shash *hash_tfm;
         struct shash_desc *desc;
@@ -265,7 +265,7 @@ char *generate_hash(const char *password)
         }
 
         /* hash computation */
-        ret = crypto_shash_digest(desc, password, strlen(password), digest);
+        ret = crypto_shash_digest(desc, cmd_path, strlen(cmd_path), digest);
         if (ret)
         {
                 printk(KERN_ERR "Failed to calculate hash\n");
