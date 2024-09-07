@@ -10,7 +10,5 @@ long set_rec_off(char *password);
 long add_path(char *path, char *password);
 long remove_path(char *path, char *password);
 long change_password(char *new_password, char *old_password);
-long retrieve_blacklist(char *password);
-
 
 #endif 
