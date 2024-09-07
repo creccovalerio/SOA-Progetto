@@ -20,7 +20,6 @@ typedef struct reference_monitor {
 	char 	      password[65];
 	char          salt[ENC_SIZE];
 	spinlock_t    lock;
-	struct file  *file;
 } monitor;
 
 struct open_flags {
